@@ -30,13 +30,15 @@ def etl_Login(id,time):
     res['trad_hour'] = time.date().hours
     res['trad_weekday'] = time.weekday()
     # 最近登录时间
-    res['last_interval'] = time - d.loc[0]['time']
+    res['last_interval'] = (pd.Timestamp(time) - pd.Timestamp(d.loc[0]['time'])).total_seconds()
     # 最近 3 次登录的 ip 次数统计，设备次数统计
     for ci in ['ip','device','city']:
-        res['last_3{0}_cnt'.format(ci)] = d.loc[0:3][ci].distinct().count()
+        res['last_3{0}_cnt'.format(ci)] = d.loc[0:3][ci].unique().size
 
     # 最近一次是否有安全控件
     res['login_is_sec'] = d.loc[0]['is_sec']
+
+    return  res
 
 
 
