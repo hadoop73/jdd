@@ -6,3 +6,7 @@
 
 [lightGBM](https://github.com/Microsoft/LightGBM/tree/master/examples/python-guide)
 
+**lightgbm 安装**
+
+`pip install --no-binary :all: lightgbm
+`
