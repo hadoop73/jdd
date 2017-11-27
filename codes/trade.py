@@ -3,6 +3,7 @@
 import pandas as pd
 import numpy as np
 import os,sys
+from multiprocessing import Pool
 
 t_login = pd.read_csv('../datas/t_login.csv')
 t_trade = pd.read_csv('../datas/t_trade.csv')
@@ -10,12 +11,11 @@ t_trade['trade_stamp'] = t_trade['time'].map(lambda x:pd.to_datetime(x).value//1
 
 t_login['time'] = t_login['time'].astype(pd.Timestamp)
 t_login['timestamp_online'] = t_login['timestamp'] + t_login['timelong']
+t_login['result'] = t_login['result'].map(lambda x: x == 1 and 1 or -1)
 
 #  给定一个登录时间和 id ，从 t_login 中构造特征
 
 # 交易id，交易时间；根据交易时间和 id  在 login 和 trade 表中筛选数据并构建特征
-id = 18138
-time = '2015-01-01 03:02:31.0'
 
 """
 log_id
@@ -34,9 +34,8 @@ time
 """
 
 # 最近登陆统计
-def etl_Login(id,timestamp,feasDir=''):
-    if os._exists(feasDir) :
-        pass
+def etl_Login_last(trade):
+    rowkey, id, timestamp = trade
     # 把 time 和 id 转化为 list 方便进行多进程处理
     # t_trade[['time','id']].values.tolist()
     # time:2015-01-01 03:02:01.0  id:18138
@@ -54,6 +53,7 @@ def etl_Login(id,timestamp,feasDir=''):
                 .sort_values('time',ascending=False)\
                 .reset_index()
     res = {}
+    res['rowkey'] = rowkey
     # 之前时间内，ip,device 登陆次数
     ip_dict = dict(d['ip'].value_counts())
     device_dict = dict(d['device'].value_counts())
@@ -115,21 +115,115 @@ def etl_Login(id,timestamp,feasDir=''):
     res['is_sec_3st'] = d.loc[2]['is_sec']
     res['time_3st_hour'] = d.loc[2]['time'].hours
 
-    for ci in ['ip','device','city']:
+    for ci in ['ip','device','city','is_sec','is_scan']:
         res['last_3{0}_cnt'.format(ci)] = d.loc[:3][ci].unique().size
 
+    # 交易的时间小时
+    # res['trad_hour'] = time.date().hours
+    # res['trad_weekday'] = time.weekday()
+    # # 最近登录时间
+    # res['last_interval'] = (pd.Timestamp(time) - pd.Timestamp(d.loc[0]['time'])).total_seconds()
+    print res
+    return  res
 
+
+def etl_Login_past(trade):
+    rowkey, id, timestamp, is_risk,time = trade
+    res = {}
+    res['rowkey'] = rowkey
+    res['is_risk'] = is_risk
+    dd = t_login[t_login['timestamp_online'] < timestamp]
+    #ip_dtt = dict(dd[dd['result'] == -1]['ip'].value_counts())
+    #device_dtt = dict(dd[dd['result'] == -1]['device'].value_counts())
+    # TODO 统计这段时间内 ip，device 的登陆失败记录,最长登陆时间记录，用户变动 ip,device 的频次，登陆的频次
+    # TODO 两次登陆的时间差，更换 ip,device 的时间差，一段时间内 ip 登陆次数的多少
+    # TODO 交易自身的特征,之前的交易次数
+    # TODO 对登陆表的特征做的更丰富，再和交易表进行拼接，统计 ip,device 登陆次数，失败次数，扫码次数，安全控件次数
+    t = pd.Timestamp(time)
+    res['hour'] = t.hour
+    t = t.date()
+    res['weekday'] = t.weekday()
+
+    d_trade = t_trade[t_trade['id']==id][t_trade['trade_stamp']<timestamp]
+    res['trade_cnt'] = d_trade.shape[0]
+
+    d = t_login[t_login['id'] == id][t_login['timestamp_online'] < timestamp]
+    for ci in ['ip','device']:
+        dt = dd[[ci, 'id', 'type']].groupby([ci, 'id'], as_index=False)['type'].agg({'{0}_cnt'.format(ci):np.size})
+        dt = dt[[ci,'{0}_cnt'.format(ci)]].groupby(ci,as_index=False).count()  # 统计 ip 登陆过多少个 id
+        for ti in [120,300]:
+            dtmp = d[d['timestamp_online'] >= timestamp - ti ]
+            # 交易次数
+            res['trade_cnt_{0}'.format(ti)] = d_trade[d_trade['trade_stamp'] >= timestamp - ti ].shape[0]
+            res['login_cnt_{0}'.format(ti)] = dtmp.shape[0]  # 登陆次数
+            ipu = dtmp[ci].unique()
+            res['{0}_id_count_{1}'.format(ci, ti)] = ipu.size # 统计有多少个 ip 登陆了
+            tmp = dt[ci].map(lambda x:x in ipu)
+            res['{0}_id_max_{1}'.format(ci,ti)] = dt[tmp]['{0}_cnt'.format(ci)].max()
+            res['{0}_id_min_{1}'.format(ci,ti)] = dt[tmp]['{0}_cnt'.format(ci)].min()
+            res['{0}_id_mean_{1}'.format(ci,ti)] = dt[tmp]['{0}_cnt'.format(ci)].mean()
+            res['{0}_id_sum_{1}'.format(ci, ti)] = dt[tmp]['{0}_cnt'.format(ci)].sum()
+    print(res)
+    return res
+
+def etl_Login_minutes(trade):
+    rowkey, id, timestamp,is_risk = trade
     # 考虑交易时间前 30s，1 分钟，2分钟，5分钟的登陆交易情况
     # 交易前 1 分钟登陆的 ip 数，交易数，device 数
     # 可以通过 ip，device 进行统计
+    # TODO 一段时间内，登陆次数，交易次数，登陆时长，登陆结果
+    res = {}
+    res['rowkey'] = rowkey
+    res['is_risk'] = is_risk
+    data = t_login[t_login['result'] == 1]
+    d = data[data['id'] == id][data['timestamp_online'] < timestamp] \
+        .sort_values('time', ascending=False) \
+        .reset_index()
 
-    # 交易的时间小时
-    res['trad_hour'] = time.date().hours
-    res['trad_weekday'] = time.weekday()
-    # 最近登录时间
-    res['last_interval'] = (pd.Timestamp(time) - pd.Timestamp(d.loc[0]['time'])).total_seconds()
+    dd = t_login[t_login['id'] == id][t_login['timestamp_online'] < timestamp] \
+        .sort_values('time', ascending=False) \
+        .reset_index()
+    dd['result'] = dd['result'].map(lambda x: x == 1 and 1 or -1)
+    #ip_dtt = dict(dd[dd['result'] == -1]['ip'].value_counts())
+    #device_dtt = dict(dd[dd['result'] == -1]['device'].value_counts())
 
-    return  res
+    for ti in [30,60,120,300]:
+        dtmp = d[d['timestamp_online'] >= timestamp - ti ]
+        dd30 = dd[dd['timestamp_online'] >= timestamp - ti]
+        res['login_{0}_fail'.format(ti)] = dd30[dd30['result'] == -1].shape[0]
+        res['login_{0}_cnt'.format(ti)] = dtmp.shape[0]
+        res['login_{0}_timelong_max'.format(ti)] = dtmp['timelong'].max()
+        res['login_{0}_timelong_mean'.format(ti)] = dtmp['timelong'].mean()
+        res['login_{0}_timelong_min'.format(ti)] = dtmp['timelong'].min()
+        res['login_{0}_timelong_std'.format(ti)] = dtmp['timelong'].std()
+        for ci in ['ip', 'device', 'city', 'is_sec', 'is_scan']:
+            res['login_{0}_{1}_cnt'.format(ti, ci)] = dtmp[ci].unique().size
+    print(res)
+    return res
+
+t_trade_list = np.array(t_trade[['rowkey','id','trade_stamp','is_risk','time']]).tolist()
+
+
+# TODO 题目意图：存在一些登陆记录，然后某个时刻出现了交易行为，判断其是否有风险
+# 根据某一条登陆信息，判断其有多大的风险
+
+
+# 如果最近登陆统计存在
+last_f = '../datas/etl_Login_past'
+if os.path.exists(last_f):
+        data = pd.read_csv(last_f)
+else:
+    import time
+    start_time = time.time()
+    pool = Pool(8)
+    d = pool.map(etl_Login_past,t_trade_list)
+    pool.close()
+    pool.join()
+    print 'time : ', 1.0*(time.time() - start_time)/60
+    data = pd.DataFrame(d)
+    #print(data.head(100))
+    data.to_csv(last_f,index=None)
+
 
 
 
