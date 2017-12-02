@@ -123,7 +123,7 @@ def etl_Login_last(trade):
     # res['trad_weekday'] = time.weekday()
     # # 最近登录时间
     # res['last_interval'] = (pd.Timestamp(time) - pd.Timestamp(d.loc[0]['time'])).total_seconds()
-    print res
+    print(res)
     return  res
 
 
@@ -219,7 +219,7 @@ else:
     d = pool.map(etl_Login_past,t_trade_list)
     pool.close()
     pool.join()
-    print 'time : ', 1.0*(time.time() - start_time)/60
+    print('time : ', 1.0*(time.time() - start_time)/60)
     data = pd.DataFrame(d)
     #print(data.head(100))
     data.to_csv(last_f,index=None)
