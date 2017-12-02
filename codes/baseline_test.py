@@ -23,6 +23,7 @@ def baseline(trade):
     res = {}
     res['rowkey'] = rowkey
     res['is_risk'] = is_risk
+    res['time'] = time
 
     t = pd.Timestamp(time)
     res['hour'] = t.hour
@@ -92,7 +93,7 @@ if os.path.exists(last_f):
 else:
     import time
     start_time = time.time()
-    pool = Pool(8)
+    pool = Pool(12)
     d = pool.map(baseline,t_trade_list)
     pool.close()
     pool.join()

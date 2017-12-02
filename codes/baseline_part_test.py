@@ -284,6 +284,8 @@ del dtt,t_login
 
 # 如果最近登陆统计存在
 #last_f = '../datas/baseline_1part_test'
+#last_f = '../datas/trade_baseline_3_train'
+
 last_f = '../datas/trade_baseline_3_test'
 if os.path.exists(last_f):
         data = pd.read_csv(last_f)
