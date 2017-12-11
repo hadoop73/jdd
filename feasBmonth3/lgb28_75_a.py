@@ -71,6 +71,10 @@ feas = pd.read_csv('../datas/feas_a')
 df_train = df_train.merge(feas,on='rowkey')
 
 
+feas = pd.read_csv('../datas/feasb3_all')
+feas = feas.drop(['time','is_risk','id'],axis=1)
+df_train = df_train.merge(feas,on='rowkey')
+
 feas = pd.read_csv('../datas/feas_login_new31')
 feas3 = pd.read_csv('../datas/feas_login_new31_month3')
 feas = pd.concat([feas,feas3])
@@ -183,7 +187,7 @@ evals_result = {}  # to record eval results for plotting
 gbm = lgb.train(params,
                 lgb_train,
                 feature_name=df_train.columns.tolist(),
-                num_boost_round=100,                                # 80
+                num_boost_round=88,                                # 80
                 evals_result=evals_result,
                 learning_rates=lambda iter: 0.1 * (0.99 ** iter), # 0.1 替换为 0.08
                 valid_sets=[lgb_train,lgb_val])

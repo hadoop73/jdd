@@ -118,7 +118,7 @@ for xbi in range(len(xbs)):
 
 print('all:',xbi+1,xbi + 1 - xxi)
 
-bs += xbs
+bs += xbs[:50]
 #bs = bs + xgb100.loc[:34]['rowkey'].values.tolist()
 
 print len(bs)
