@@ -7,10 +7,11 @@ from multiprocessing import Pool
 
 
 t_login = pd.read_csv('../datas/t_login.csv')
-t_login = t_login[t_login['time']>='2015-03-01 00:00:00']
+t_login = t_login[t_login['time']>='2015-04-01 00:00:00']
+t_login = t_login[t_login['time']<'2015-06-01 00:00:00']
 
 t_trade = pd.read_csv('../datas/t_trade.csv')
-t_trade = t_trade[t_trade['time']>='2015-04-01 00:00:00']
+t_trade = t_trade[t_trade['time']>='2015-05-01 00:00:00']
 
 t_trade['trade_stamp'] = t_trade['time'].map(lambda x:pd.to_datetime(x).value//10**9 - 28800.0)
 t_trade['hour'] = t_trade['time'].map(lambda x:pd.Timestamp(x).hour)
@@ -126,8 +127,7 @@ def baseline_1(idx):
     # TODO 对登陆表的特征做的更丰富，再和交易表进行拼接，统计 ip,device 登陆次数，失败次数，扫码次数，安全控件次数
 
     res = {}
-    d = t_login.loc[:idx]
-    idx += 1
+    d = t_login.loc[:idx-1]
     res['idx'] = idx
     timestamp = t_login.loc[idx]['timestamp']
     # TODO ip 在之前时间内，登陆的次数，登陆的用户数，登陆的时间长度，登陆的城市数，登陆的成功次数
@@ -135,7 +135,7 @@ def baseline_1(idx):
     # TODO ip,id,device,type,city 以及这些的组合，
 
 
-    for ci in ['ip','device']:
+    for ci in ['ip','device','id']:
         idata = t_login.loc[idx][ci]
         dci = d[d[ci] == idata]
         dci = dci.sort_values('timestamp', ascending=False) \
@@ -151,13 +151,18 @@ def baseline_1(idx):
         res[ci + '_cnt'] = dci.shape[0]                                 # ip 之前登陆的次数
         res[ci + '_cnt_0'] = dci[dci['result'] != 1].shape[0]           # ip 之前登陆失败的次数
         res[ci + '_cnt_1'] = dci[dci['result'] == 1].shape[0]           # ip 之前登陆成功的次数
-        res[ci + '_ids'] = dci['id'].unique().size                      # ip 之前登陆的 id 数
-        res[ci + '_type'] = dci['type'].unique().size                   # ip 之前登陆的 type 数
+        res[ci + '_cnt_rate'] = 1.0 * res[ci + '_cnt_0'] / (1 + res[ci + '_cnt'])
+        res[ci + '_cnt_1rate'] = 1.0 * res[ci + '_cnt_1'] / (1 + res[ci + '_cnt'])
+
+        for ii in ['id','ip','device','type','city']:
+            if ii != ci:
+                res[ci + "_" + ii] = dci[ii].unique().size              # ip 之前登陆的 id 数
         res[ci + '_from'] = dci['log_from'].unique().size               # ip 之前登陆的 log_from 数
         res[ci + '_cnt_sec1'] = dci[dci['is_sec'] == True].shape[0]     # ip 之前安全插件登陆次数
         res[ci + '_cnt_sec0'] = dci[dci['is_sec'] == False].shape[0]    # ip 之前非安全插件登陆次数
         res[ci + '_cnt_scan1'] = dci[dci['is_scan'] == True].shape[0]     # ip 之前扫码登陆次数
         res[ci + '_cnt_scan0'] = dci[dci['is_scan'] == False].shape[0]    # ip 之前扫码登陆次数
+        res[ci + '_cnt_scan0rate'] = 1.0 * res[ci + '_cnt_scan0'] / (1 + res[ci + '_cnt'])
 
     for ci in [('id', 'ip'),('id', 'device'),('id', 'type'),
                ('ip', 'device'),('ip', 'type'),('device', 'type'),('id','city')]:
@@ -177,14 +182,19 @@ def baseline_1(idx):
         res[ci + '_cnt'] = dci.shape[0]                                 # ip 之前登陆的次数
         res[ci + '_cnt_0'] = dci[dci['result'] != 1].shape[0]           # ip 之前登陆失败的次数
         res[ci + '_cnt_1'] = dci[dci['result'] == 1].shape[0]           # ip 之前登陆成功的次数
-        res[ci + '_ids'] = dci['id'].unique().size                      # ip 之前登陆的 id 数
-        res[ci + '_type'] = dci['type'].unique().size                   # ip 之前登陆的 type 数
+        res[ci + '_cnt_rate'] = 1.0 * res[ci + '_cnt_0'] / (1 + res[ci + '_cnt'])
+        res[ci + '_cnt_1rate'] = 1.0 * res[ci + '_cnt_1'] / (1 + res[ci + '_cnt'])
+
+        for ii in ['id','ip','device','type','city']:
+            if ii not in ci:
+                res[ci + "_" + ii] = dci[ii].unique().size              # ip 之前登陆的 id 数
         res[ci + '_from'] = dci['log_from'].unique().size               # ip 之前登陆的 log_from 数
         res[ci + '_cnt_sec1'] = dci[dci['is_sec'] == True].shape[0]     # ip 之前安全插件登陆次数
         res[ci + '_cnt_sec0'] = dci[dci['is_sec'] == False].shape[0]    # ip 之前非安全插件登陆次数
         res[ci + '_cnt_scan1'] = dci[dci['is_scan'] == True].shape[0]     # ip 之前扫码登陆次数
         res[ci + '_cnt_scan0'] = dci[dci['is_scan'] == False].shape[0]    # ip 之前扫码登陆次数
-
+        res[ci + '_cnt_scan0rate'] = 1.0 * res[ci + '_cnt_scan0'] / (1 + res[ci + '_cnt'])
+    del d,dci
     print res
     return res
 
@@ -192,7 +202,6 @@ def baseline(trade):
     rowkey, id, timestamp, is_risk, time = trade
     res = {}
     res['rowkey'] = rowkey
-    res['time'] = time
     res['is_risk'] = is_risk
 
     t = pd.Timestamp(time)
@@ -253,18 +262,21 @@ def baseline(trade):
     return  res
 
 
-t_trade_list = np.array(t_trade[['rowkey','id','trade_stamp','is_risk','time']]).tolist()
-#t_trade_list = t_login.index.tolist()
+#t_trade_list = np.array(t_trade[['rowkey','id','trade_stamp','is_risk','time']]).tolist()
+dtt = t_login[t_login['time']>='2015-05-01 00:00:00']
+
+t_trade_list = dtt.index.tolist()
+del dtt,t_trade
 
 # 如果最近登陆统计存在
-last_f = '../datas/baseline'
+last_f = '../datas/baseline_month5'
 if os.path.exists(last_f):
         data = pd.read_csv(last_f)
 else:
     import time
     start_time = time.time()
-    pool = Pool(12)
-    d = pool.map(baseline,t_trade_list)
+    pool = Pool(8)
+    d = pool.map(baseline_1,t_trade_list)
     pool.close()
     pool.join()
     print 'time : ', 1.0*(time.time() - start_time)/60
