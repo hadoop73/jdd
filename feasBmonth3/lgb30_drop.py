@@ -47,13 +47,13 @@ df_train = df_train.drop(acl,axis=1)
 #df_train = df_train.fillna(0)
 #df_train = df_train.drop(['hour','weekday'],axis=1)
 # df_train = df_train[ac]
-print df_train.shape
+print(df_train.shape)
 
 feas = pd.read_csv('../datas/feasb1')
 feas3 = pd.read_csv('../datas/feasb1_month3')
 feas = pd.concat([feas,feas3])
 feas = feas.drop(['time','is_risk','id'],axis=1)
-print '--',feas.shape
+print('--',feas.shape)
 
 df_train = df_train.merge(feas,on='rowkey')
 
@@ -65,10 +65,12 @@ feas = pd.read_csv('../datas/feasb2')
 feas3 = pd.read_csv('../datas/feasb2_month3')
 feas = pd.concat([feas,feas3])
 feas = feas.drop(['time','is_risk','id'],axis=1)
-print '--',feas.shape
+print('--',feas.shape)
 df_train = df_train.merge(feas,on='rowkey')
 
-feas = pd.read_csv('../datas/feas_a')
+
+feas = pd.read_csv('../datas/feasb3_all')
+feas = feas.drop(['time','is_risk','id'],axis=1)
 df_train = df_train.merge(feas,on='rowkey')
 
 
@@ -76,7 +78,8 @@ feas = pd.read_csv('../datas/feas_login_new31')
 feas3 = pd.read_csv('../datas/feas_login_new31_month3')
 feas = pd.concat([feas,feas3])
 #feas = feas[cls]
-print '--',feas.shape
+feas = feas.drop(['trade_login_time_diff1','trade_login_time_diff2'],axis=1)
+print('--',feas.shape)
 feas = feas.drop(['time','is_risk','id','hour'],axis=1)
 df_train = df_train.merge(feas,on='rowkey')
 
@@ -86,7 +89,7 @@ droplist = ['trade_cnt','trade_weekday_cnt','trade_weekday_cnt_rate','hour_v_cnt
             'ip_log_from_time_diff_min0','device_log_from_time_diff_min1','ip_log_from_time_diff_min1',
             'trade_1800_cnt','trade_60_cnt','trade_120_cnt','trade_300_cnt','trade_86400_cnt','trade_3600_cnt','trade_600_cnt',
             'timelong_max','timelong0_max','login2_time_diff','id_cnt_scan12','id_cnt_scan11','id_cnt_scan10',
-            'time_all'
+            'time_all','trade_login_hour_cnt'
             # time mean
             # 'idcity_time_mean0','ip_time_mean0','idtype_time_mean0',
             # 'ip_time_mean2','iptype_time_mean0','idtype_time_mean1','iddevice_time_mean0','idip_time_mean0','id_time_mean0',
@@ -151,27 +154,27 @@ y_val = df_val['is_risk'].values
 
 #y_test = df_test['is_risk'].values
 dftrain = df_train[['is_risk','rowkey']]
-df_train = df_train.drop(['is_risk','rowkey'], axis=1)
-df_val = df_val.drop(['is_risk','rowkey'], axis=1)
+df_train = df_train.drop(['is_risk','rowkey','id'], axis=1)
+df_val = df_val.drop(['is_risk','rowkey','id'], axis=1)
 
 X_train = df_train.values
 X_val = df_val.values
 
 #test['is_risk'] = -1
-X_test = test.drop(['is_risk','rowkey'], axis=1).values
+X_test = test.drop(['is_risk','rowkey','id'], axis=1).values
 
 params = {
-    #'max_depth':8,
+    'max_depth':9,
     'boosting_type': 'dart',
     'objective': 'binary',
     'metric': 'auc', # auc
-    'num_leaves': 81,           # 31 替换为 61
+    'num_leaves': 54,           # 31 替换为 61
     #'learning_rate': 0.05,
-    'feature_fraction': 0.6,    # 随机选 90% 的特征用于训练
-    'bagging_fraction': 0.8,    # 随机选择 80% 的数据进行 bagging
-    'bagging_freq': 40,          # bagging 每 5 次进行
-    'max_bin':80,              # 特征最大分割
-    'min_data_in_leaf':20,      # 每个叶子节点最少样本
+    'feature_fraction': 0.22963499999999998,    # 随机选 90% 的特征用于训练
+    'bagging_fraction': 0.4,    # 随机选择 80% 的数据进行 bagging
+    'bagging_freq': 50,          # bagging 每 5 次进行
+    'max_bin':100,              # 特征最大分割
+    'min_data_in_leaf':50,      # 每个叶子节点最少样本
     'verbose': 0
 }
 
@@ -234,6 +237,6 @@ df.to_csv('../datas/a',index=None,header=None)
 # #lgb.plot_metric(evals_result,metric='binary_logloss')
 #lgb.plot_importance(gbm, max_num_features=50)
 #
-# graph = lgb.create_tree_digraph(gbm, tree_index=0, name='Tree0')
-# graph.render(view=True)
+graph = lgb.create_tree_digraph(gbm, tree_index=0, name='Tree0')
+graph.render(view=True)
 #plt.show()
