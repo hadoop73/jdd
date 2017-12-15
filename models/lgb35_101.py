@@ -4,9 +4,7 @@ import json
 import lightgbm as lgb
 import pandas as pd
 import numpy as np
-import copy
-from multiprocessing import Pool
-
+import matplotlib.pyplot as plt
 try:
     import cPickle as pickle
 except:
@@ -25,9 +23,8 @@ min_sum_hessian_in_leaf = 100
 # TODO 更换训练数据，xgb 效果好，需要提升 lgb,adboost 的效果
 # TODO 检查数据，完善一下数据
 # TODO 模型融合改进
-# TODO 用 month_login 数据进行训练,调参框架，筛数据
-xstr = 'lgb60_month_all1'
-
+# TODO 用 month_login 数据进行训练,调参，筛数据
+xstr = 'lgb60_month_5'
 
 feas = pd.read_csv('../datas/feas_new_month3')
 feas = feas.drop(['trade_cnt','hour','weekday','hour_v','device_cnt2','device_cnt1','ip_cnt1','ip_cnt2'
@@ -50,13 +47,13 @@ df_train = df_train.drop(acl,axis=1)
 #df_train = df_train.fillna(0)
 #df_train = df_train.drop(['hour','weekday'],axis=1)
 # df_train = df_train[ac]
-print(df_train.shape)
+print df_train.shape
 
 feas = pd.read_csv('../datas/feasb1')
 feas3 = pd.read_csv('../datas/feasb1_month3')
 feas = pd.concat([feas,feas3])
 feas = feas.drop(['time','is_risk','id'],axis=1)
-print('--',feas.shape)
+print '--',feas.shape
 
 df_train = df_train.merge(feas,on='rowkey')
 
@@ -68,7 +65,7 @@ feas = pd.read_csv('../datas/feasb2')
 feas3 = pd.read_csv('../datas/feasb2_month3')
 feas = pd.concat([feas,feas3])
 feas = feas.drop(['time','is_risk','id'],axis=1)
-print('--',feas.shape)
+print '--',feas.shape
 df_train = df_train.merge(feas,on='rowkey')
 
 
@@ -82,7 +79,7 @@ feas3 = pd.read_csv('../datas/feas_login_new31_month3')
 feas = pd.concat([feas,feas3])
 #feas = feas[cls]
 feas = feas.drop(['trade_login_time_diff1','trade_login_time_diff2'],axis=1)
-print('--',feas.shape)
+print '--',feas.shape
 feas = feas.drop(['time','is_risk','id','hour'],axis=1)
 df_train = df_train.merge(feas,on='rowkey')
 
@@ -92,7 +89,7 @@ droplist = ['trade_cnt','trade_weekday_cnt','trade_weekday_cnt_rate','hour_v_cnt
             'ip_log_from_time_diff_min0','device_log_from_time_diff_min1','ip_log_from_time_diff_min1',
             'trade_1800_cnt','trade_60_cnt','trade_120_cnt','trade_300_cnt','trade_86400_cnt','trade_3600_cnt','trade_600_cnt',
             'timelong_max','timelong0_max','login2_time_diff','id_cnt_scan12','id_cnt_scan11','id_cnt_scan10',
-            'time_all','trade_login_hour_cnt'
+            'time_all','trade_login_hour_cnt','id'
             # time mean
             # 'idcity_time_mean0','ip_time_mean0','idtype_time_mean0',
             # 'ip_time_mean2','iptype_time_mean0','idtype_time_mean1','iddevice_time_mean0','idip_time_mean0','id_time_mean0',
@@ -143,7 +140,7 @@ df_val = df_train[df_train['time']>='2015-06-01 00:00:00']
 df_train = df_train[df_train['time']<'2015-06-01 00:00:00']#[df_train['time']>='2015-05-01 00:00:00']
 
 df_train = df_train.drop('time',axis=1)
-dfval = df_val[['is_risk','rowkey','time','id']]
+dfval = df_val[['is_risk','rowkey','time']]
 df_val = df_val.drop('time',axis=1)
 
 
@@ -157,27 +154,27 @@ y_val = df_val['is_risk'].values
 
 #y_test = df_test['is_risk'].values
 dftrain = df_train[['is_risk','rowkey']]
-df_train = df_train.drop(['is_risk','rowkey','id'], axis=1)
-df_val = df_val.drop(['is_risk','rowkey','id'], axis=1)
+df_train = df_train.drop(['is_risk','rowkey'], axis=1)
+df_val = df_val.drop(['is_risk','rowkey'], axis=1)
 
 X_train = df_train.values
 X_val = df_val.values
 
 #test['is_risk'] = -1
-X_test = test.drop(['is_risk','rowkey','id'], axis=1).values
+X_test = test.drop(['is_risk','rowkey'], axis=1).values
 
 params = {
-    'max_depth':8,
+    #'max_depth':8,
     'boosting_type': 'dart',
     'objective': 'binary',
     'metric': 'auc', # auc
     'num_leaves': 61,           # 31 替换为 61
     #'learning_rate': 0.05,
-    'feature_fraction': 0.7,    # 随机选 90% 的特征用于训练
-    'bagging_fraction': 0.8,    # 随机选择 80% 的数据进行 bagging
-    'bagging_freq': 5,          # bagging 没 5 次进行
+    'feature_fraction': 0.5,    # 随机选 90% 的特征用于训练
+    'bagging_fraction': 0.6,    # 随机选择 80% 的数据进行 bagging
+    'bagging_freq': 50,          # bagging 每 5 次进行
     'max_bin':80,              # 特征最大分割
-    'min_data_in_leaf':50,      # 每个叶子节点最少样本
+    'min_data_in_leaf':20,      # 每个叶子节点最少样本
     'verbose': 0
 }
 
@@ -186,89 +183,60 @@ lgb_val = lgb.Dataset(X_val, y_val)
 
 lgb_test = lgb.Dataset(X_test)
 
-def train(dp,dfval=dfval):
-        print dp['params']
-        gbm = lgb.train(dp['params'],
-                        lgb_train,
-                        feature_name=df_train.columns.tolist(),
-                        num_boost_round= 100,                                # 80
-                        learning_rates=lambda iter: 0.1 * (0.99 ** iter) # 0.1 替换为 0.08
-                        )
-        # 预测验证集
-        yval_pred = gbm.predict(X_val)
-        dfval['y'] = yval_pred
-        dfval = dfval.sort_values('y',ascending=False).reset_index(drop=True)
+evals_result = {}  # to record eval results for plotting
 
-        n = 0
-        while dfval.loc[n]['is_risk'] == 1:
-            n += 1
-        print "top n: ",n
-        return n
+gbm = lgb.train(params,
+                lgb_train,
+                feature_name=df_train.columns.tolist(),
+                num_boost_round=100,                                # 80
+                evals_result=evals_result,
+                learning_rates=lambda iter: 0.1 * (0.99 ** iter), # 0.1 替换为 0.08
+                valid_sets=[lgb_train,lgb_val])
 
+# 预测验证集
+ytest_pred = gbm.predict(X_test)
+dtest['y'] = ytest_pred
+dtest = dtest.sort_values('y',ascending=False).reset_index(drop=True)
+dtest.to_csv('../datas/{0}_ytest_pred'.format(xstr),index=None)
 
-pa = [{
-        'max_bin': 100,  # 特征最大分割
-        'bagging_freq': 50,  # bagging 没 5 次进行
-        'min_data_in_leaf': 50,  # 每个叶子节点最少样本
-        'max_depth': 9,
-        'num_leaves': 61,  # 31 替换为 61
-        'feature_fraction': 0.7,  # 随机选 90% 的特征用于训练
-        'bagging_fraction': 0.8,  # 随机选择 80% 的数据进行 bagging
-    }]
+# 预测验证集
+yval_pred = gbm.predict(X_val)
+dfval['y'] = yval_pred
+dfval = dfval.sort_values('y',ascending=False).reset_index(drop=True)
+dfval.to_csv('../datas/{0}_yval_pred'.format(xstr),index=None)
 
-ans = 0
-bp = None
-plist = []
-def fun(ki,p=None,i=5):
-    if i<1: return
-    ps,dp = [],{}
-    for r in [0.5,  1.2,  1.5]:
-        ptmp = p
-        if type(ptmp[ki]) == int:
-            ptmp[ki] = int(r * ptmp[ki])
-        elif r * ptmp[ki] >= 1:
-            continue
-        else:
-            ptmp[ki] = r * ptmp[ki]
-        params.update(ptmp)
-        dp['params'] = params
-        dp['r'] = r
-        if params not in plist:
-            plist.append(params.copy())
-            ti = copy.deepcopy(dp)
-            ps.append(ti)
-    if len(ps) == 0:
-        return
-    pool = Pool(3)
-    rs = pool.map(train,ps)
-    pool.close()
-    pool.join()
-    print rs
-    rmax = max(rs)
-    global ans
-    if rmax > ans:
-        ans = rmax
-        for ai,bi in zip(rs,ps):
-            if ai == rmax:
-                with open('./ans/res.txt','a') as f :
-                    f.writelines('\nans：{0}'.format(rmax))
-                    f.writelines('{0}'.format(bi))
-                global pa
-                pa.append(bi['params'])
-                fun(ki,p=bi['params'], i=3)
-    else:
-        for ai, bi in zip(rs, ps):
-            if ai==rmax and bi['r']!=1.2:
-                 # 继续调参
-                 fun(ki,p=bi['params'],i=i-1)
-
-def rand_params():
-    cols = ['num_leaves', 'feature_fraction',
-            'bagging_fraction', 'bagging_freq', 'min_data_in_leaf']
-    for ki in cols:
-        for pi in pa:
-            fun(ki,pi)
-
-rand_params()
+n = 0
+yi = 1
+while dfval.loc[n]['is_risk'] == 1:
+    yi = dfval.loc[n]['y']
+    n += 1
+print("top n: ",n)
+print('test:',dtest[dtest['y']>=yi].shape[0])
+# 预训练证集
+ytrain_pred = gbm.predict(X_train)
+dftrain['y'] = ytrain_pred
+dftrain = dftrain.sort_values('y',ascending=False).reset_index(drop=True)
+dftrain.to_csv('../datas/{0}_ytrain_pred'.format(xstr),index=None)
+#y_pred = gbm.predict(X_test)
+#xtest['y'] = y_pred
+#xtest = xtest.sort_values('y',ascending=False).reset_index(drop=True)
 
 
+cols = df_train.columns.tolist()
+scores = gbm.feature_importance()
+df = pd.DataFrame({'cols':cols,'scores':scores})
+df = df.sort_values('scores',ascending=False).reset_index(drop=True)
+
+df.to_csv('../datas/a',index=None,header=None)
+
+
+#print xtest.head()
+#xtest.to_csv('../datas/xtest',index=None)
+#print evals_result
+#lgb.plot_metric(evals_result,metric='auc')
+# #lgb.plot_metric(evals_result,metric='binary_logloss')
+#lgb.plot_importance(gbm, max_num_features=50)
+#
+graph = lgb.create_tree_digraph(gbm, tree_index=0, name='Tree0')
+graph.render(view=True)
+#plt.show()
